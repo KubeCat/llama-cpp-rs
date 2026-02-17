@@ -1011,6 +1011,9 @@ fn main() {
         TargetOs::Linux => {
             println!("cargo:rustc-link-lib=dylib=stdc++");
         }
+        TargetOs::Android => {
+            println!("cargo:rustc-link-lib=dylib=c++_shared");
+        }
         TargetOs::Apple(variant) => {
             println!("cargo:rustc-link-lib=framework=Foundation");
             println!("cargo:rustc-link-lib=framework=Metal");
