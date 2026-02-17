@@ -770,6 +770,9 @@ fn main() {
 
     if cfg!(feature = "cuda") {
         config.define("GGML_CUDA", "ON");
+        // Ensure CUDA objects are compiled with -fPIC so they link correctly
+        // with rust-lld (default on nightly x86_64-linux since ~1.84).
+        config.define("CMAKE_POSITION_INDEPENDENT_CODE", "ON");
 
         if cfg!(feature = "cuda-no-vmm") {
             config.define("GGML_CUDA_NO_VMM", "ON");
