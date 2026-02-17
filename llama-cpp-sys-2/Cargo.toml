@@ -49,12 +49,14 @@ include = [
     "/llama.cpp/ggml/src/ggml-metal/**/*",
     "/llama.cpp/ggml/src/ggml-vulkan/**/*",
     "/llama.cpp/ggml/src/ggml-hip/**/*",
+    "/llama.cpp/ggml/src/ggml-opencl/**/*",
 
     "/llama.cpp/ggml/src/llamafile/sgemm.h",
     "/llama.cpp/ggml/src/llamafile/sgemm.cpp",
 
     "/llama.cpp/pocs",
     "/llama.cpp/vendor",
+    "/vendor/opencl-headers/**/*",
 
     "/llama.cpp/CMakeLists.txt",
     "/llama.cpp/common/CMakeLists.txt",
@@ -86,6 +88,7 @@ cuda-no-vmm = ["cuda"]
 metal = []
 dynamic-link = []
 vulkan = []
+opencl = []
 openmp = []
 rocm = []
 # Only has an impact on Android.

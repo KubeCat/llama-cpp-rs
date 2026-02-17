@@ -814,6 +814,82 @@ fn main() {
         config.define("GGML_HIP", "ON");
     }
 
+    if cfg!(feature = "opencl") {
+        config.define("GGML_OPENCL", "ON");
+        config.define("GGML_OPENCL_USE_ADRENO_KERNELS", "ON");
+        config.define("GGML_OPENCL_EMBED_KERNELS", "ON");
+
+        // Vendor Khronos OpenCL headers (NDK doesn't ship them).
+        let opencl_headers = Path::new(&manifest_dir)
+            .join("vendor")
+            .join("opencl-headers");
+        config.define("OpenCL_INCLUDE_DIR", opencl_headers.to_str().unwrap());
+        // Also add to the compiler search path so #include <CL/cl.h> resolves.
+        config.cflag(&format!("-isystem{}", opencl_headers.display()));
+        config.cxxflag(&format!("-isystem{}", opencl_headers.display()));
+
+        if matches!(target_os, TargetOs::Android) {
+            // Android devices provide libOpenCL.so at runtime via the GPU
+            // driver (e.g. /system/vendor/lib64/libOpenCL.so). We use
+            // dlopen/dlsym at runtime instead of compile-time linking:
+            //
+            // 1. Build a minimal stub .so so CMake's find_package(OpenCL)
+            //    can satisfy its link check during configure.
+            // 2. Compile a dlopen shim (opencl_dynload.c) that provides all
+            //    CL function symbols — each wrapper lazily loads the real
+            //    driver lib and forwards calls.
+            // 3. Link the shim statically; do NOT link libOpenCL.so.
+            let stub_src = Path::new(&manifest_dir)
+                .join("vendor")
+                .join("opencl-stub")
+                .join("opencl_stub.c");
+            let stub_dir = out_dir.join("opencl-stub");
+            std::fs::create_dir_all(&stub_dir).unwrap();
+
+            let ndk = env::var("ANDROID_NDK")
+                .or_else(|_| env::var("NDK_ROOT"))
+                .or_else(|_| env::var("ANDROID_NDK_ROOT"))
+                .or_else(|_| env::var("CARGO_NDK_ANDROID_NDK"))
+                .expect("Android NDK not found for OpenCL stub build");
+
+            let api_level = env::var("ANDROID_API_LEVEL").unwrap_or("28".into());
+            let clang = format!(
+                "{}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android{}-clang",
+                ndk, api_level
+            );
+
+            // (1) Stub .so for CMake configure only.
+            let stub_so = stub_dir.join("libOpenCL.so");
+            let status = std::process::Command::new(&clang)
+                .args(["-shared", "-o"])
+                .arg(stub_so.to_str().unwrap())
+                .arg(stub_src.to_str().unwrap())
+                .status()
+                .unwrap_or_else(|e| panic!("Failed to build OpenCL stub: {e}"));
+            assert!(status.success(), "OpenCL stub compilation failed");
+            config.define("OpenCL_LIBRARY", stub_so.to_str().unwrap());
+
+            // (2) Compile the dlopen shim as a static library.
+            let dynload_src = Path::new(&manifest_dir)
+                .join("vendor")
+                .join("opencl-dynload")
+                .join("opencl_dynload.c");
+            cc::Build::new()
+                .file(&dynload_src)
+                .include(&opencl_headers)
+                .flag("-DCL_TARGET_OPENCL_VERSION=300")
+                .pic(true)
+                .compile("opencl_dynload");
+
+            // (3) Link the shim + libdl (for dlopen/dlsym).
+            println!("cargo:rustc-link-lib=static=opencl_dynload");
+            println!("cargo:rustc-link-lib=dl");
+        } else {
+            // Desktop: link against the system OpenCL library directly.
+            println!("cargo:rustc-link-lib=OpenCL");
+        }
+    }
+
     // Android doesn't have OpenMP support AFAICT and openmp is a default feature. Do this here
     // rather than modifying the defaults in Cargo.toml just in case someone enables the OpenMP feature
     // and tries to build for Android anyway.
