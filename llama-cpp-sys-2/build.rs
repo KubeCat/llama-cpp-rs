@@ -719,6 +719,32 @@ fn main() {
         // Android-specific CMake configurations
         config.define("GGML_LLAMAFILE", "OFF");
 
+        // When building with Vulkan, the NDK only ships C headers (vulkan.h).
+        // ggml-vulkan.cpp needs the C++ headers (vulkan.hpp) from the host
+        // Vulkan SDK. We create a staging directory with only a symlink to
+        // the vulkan headers to avoid polluting the include path with host
+        // libc headers that would conflict with the NDK's.
+        if cfg!(feature = "vulkan") {
+            let vulkan_include = env::var("VULKAN_INCLUDE_DIR")
+                .unwrap_or_else(|_| "/usr/include".to_string());
+            config.define("Vulkan_INCLUDE_DIR", &vulkan_include);
+
+            let vulkan_staging = out_dir.join("vulkan-hpp-include");
+            std::fs::create_dir_all(&vulkan_staging).unwrap();
+            let vulkan_src = Path::new(&vulkan_include);
+            // Symlink vulkan/ and vk_video/ (transitive dependency of vulkan_core.h)
+            for dir in &["vulkan", "vk_video"] {
+                let link = vulkan_staging.join(dir);
+                let src = vulkan_src.join(dir);
+                if !link.exists() && src.exists() {
+                    #[cfg(unix)]
+                    std::os::unix::fs::symlink(&src, &link).unwrap();
+                }
+            }
+            config.cxxflag(&format!("-isystem{}", vulkan_staging.display()));
+            println!("cargo:rerun-if-env-changed=VULKAN_INCLUDE_DIR");
+        }
+
         // Link Android system libraries
         println!("cargo:rustc-link-lib=log");
         println!("cargo:rustc-link-lib=android");
@@ -762,6 +788,11 @@ fn main() {
                     let vulkan_lib_path = Path::new(&vulkan_path).join("lib");
                     println!("cargo:rustc-link-search={}", vulkan_lib_path.display());
                 }
+                println!("cargo:rustc-link-lib=vulkan");
+            }
+            TargetOs::Android => {
+                // Android ships libvulkan.so as a system library (API 24+).
+                // The NDK toolchain file ensures CMake finds the headers and lib.
                 println!("cargo:rustc-link-lib=vulkan");
             }
             _ => (),
