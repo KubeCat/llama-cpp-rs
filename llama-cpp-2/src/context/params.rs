@@ -655,6 +655,25 @@ impl LlamaContextParams {
         self.context_params.swa_full
     }
 
+    /// Set whether to use a unified KV cache shared across all sequences.
+    ///
+    /// When `true`, all sequences share one pool of `n_ctx` cells and `seq_cp`
+    /// is a metadata-only operation (no physical data copy).
+    ///
+    /// When `false` (default), each sequence gets its own stream of
+    /// `n_ctx / n_seq_max` cells.
+    #[must_use]
+    pub fn with_kv_unified(mut self, unified: bool) -> Self {
+        self.context_params.kv_unified = unified;
+        self
+    }
+
+    /// Get whether the KV cache is unified.
+    #[must_use]
+    pub fn kv_unified(&self) -> bool {
+        self.context_params.kv_unified
+    }
+
     /// Set the max number of sequences (i.e. distinct states for recurrent models)
     ///
     /// # Examples
