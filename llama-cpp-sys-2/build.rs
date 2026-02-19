@@ -694,8 +694,49 @@ fn main() {
         // Configure architecture-specific compiler flags
         match android_abi {
             "arm64-v8a" => {
-                config.cflag("-march=armv8-a");
-                config.cxxflag("-march=armv8-a");
+                // Allow env override, otherwise build GGML_CPU_ARM_ARCH from
+                // Rust target features (CARGO_CFG_TARGET_FEATURE).
+                let arm_arch =
+                    std::env::var("GGML_CPU_ARM_ARCH").unwrap_or_else(|_| {
+                        let features =
+                            std::env::var("CARGO_CFG_TARGET_FEATURE")
+                                .unwrap_or_default();
+                        let mut base = "armv8-a";
+                        let mut exts = Vec::new();
+                        for feat in features.split(',') {
+                            match feat {
+                                "dotprod" => {
+                                    base = "armv8.2-a";
+                                    exts.push("dotprod");
+                                }
+                                "i8mm" => {
+                                    base = "armv8.6-a";
+                                    exts.push("i8mm");
+                                }
+                                "fp16" => {
+                                    base = "armv8.2-a";
+                                    exts.push("fp16");
+                                }
+                                "sve" => {
+                                    base = "armv8.2-a";
+                                    exts.push("sve");
+                                }
+                                "sve2" => {
+                                    base = "armv9-a";
+                                    exts.push("sve2");
+                                }
+                                _ => {}
+                            }
+                        }
+                        if exts.is_empty() {
+                            base.to_string()
+                        } else {
+                            format!("{}+{}", base, exts.join("+"))
+                        }
+                    });
+                debug_log!("Android arm64 GGML_CPU_ARM_ARCH: {}", arm_arch);
+                config.define("GGML_CPU_ARM_ARCH", &arm_arch);
+                println!("cargo:rerun-if-env-changed=GGML_CPU_ARM_ARCH");
             }
             "armeabi-v7a" => {
                 config.cflag("-march=armv7-a");
